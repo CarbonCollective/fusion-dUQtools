@@ -3,11 +3,13 @@ import logging
 from .config import cfg
 from .ids import ImasHandle, get_ids_tree
 from .models import WorkDirectory
+from .operations import confirm_operations, op_queue
 
 logger = logging.getLogger(__name__)
 info, debug = logger.info, logger.debug
 
 
+@confirm_operations
 def plot(*, dry_run, **kwargs):
     """Plot subroutine to create plots from datas."""
     import matplotlib.pyplot as plt
@@ -51,5 +53,7 @@ def plot(*, dry_run, **kwargs):
             ax.plot(x, y, label=j)
 
         ax.legend()
-        if not dry_run:
-            fig.savefig(f'plot_{i:04d}.png')
+        plotname = f'plot_{i:04d}.png'
+        op_queue.add(action=fig.savefig,
+                     args=(plotname, ),
+                     description=f'Creating plot {plotname}')

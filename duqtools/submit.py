@@ -3,14 +3,27 @@ import subprocess
 from pathlib import Path
 from typing import Any, List
 
-from duqtools.config import cfg
-
+from .config import cfg
 from .models import WorkDirectory
+from .operations import add_to_op_queue, confirm_operations
 
 logger = logging.getLogger(__name__)
 info, debug = logger.info, logger.debug
 
 
+@add_to_op_queue('Submitting {run_dir}')
+def submit_job(lockfile, cmd, run_dir):
+    debug(f'Put lockfile in place for {lockfile}')
+    lockfile.touch()
+
+    info(f'submitting script {cmd}')
+    ret = subprocess.run(cmd, check=True, capture_output=True)
+    info(f'submission returned: {ret.stdout}')
+    with open(lockfile, 'wb') as f:
+        f.write(ret.stdout)
+
+
+@confirm_operations
 def submit(*, force: bool, **kwargs):
     """submit. Function which implements the functionality to submit jobs to
     the cluster.
@@ -60,14 +73,7 @@ def submit(*, force: bool, **kwargs):
                 run_dir)
             continue
 
-        debug('Put lockfile in place for %s', submission_script)
-        lockfile.touch()
-
         submit_cmd = cfg.submit.submit_command.split()
         cmd: List[Any] = [*submit_cmd, submission_script]
 
-        info('submitting script %s', str(cmd))
-        ret = subprocess.run(cmd, check=True, capture_output=True)
-        info('submission returned: %s', ret.stdout)
-        with open(lockfile, 'wb') as f:
-            f.write(ret.stdout)
+        submit_job(lockfile, cmd, run_dir)

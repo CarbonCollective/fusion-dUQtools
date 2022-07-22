@@ -6,6 +6,7 @@ from duqtools.config import cfg
 from .ids import IDSMapping, ImasHandle, apply_model
 from .matrix_samplers import get_matrix_sampler
 from .models import WorkDirectory
+from .operations import add_to_op_queue, confirm_operations, op_queue
 from .schema.runs import Runs
 from .system import get_system
 
@@ -27,7 +28,29 @@ def fail_if_locations_exist(locations: Iterable[ImasHandle]):
             'remove or `--force` to override.')
 
 
-def create(*, force, dry_run, **kwargs):
+@add_to_op_queue('Applying combination to {target_in}')
+def apply_combination(target_in: ImasHandle, combination) -> None:
+    core_profiles = target_in.get('core_profiles')
+    ids_mapping = IDSMapping(core_profiles)
+
+    for model in combination:
+        apply_model(model, ids_mapping)
+
+        logger.info('Writing data entry: %s', target_in)
+        with target_in.open() as data_entry_target:
+            core_profiles.put(db_entry=data_entry_target)
+
+
+@add_to_op_queue('Writing out {workspace.runs_yaml}')
+def write_runs_file(runs: list, workspace) -> None:
+
+    runs = Runs.parse_obj(runs)
+    with open(workspace.runs_yaml, 'w') as f:
+        runs.yaml(stream=f)
+
+
+@confirm_operations
+def create(*, force, **kwargs):
     """Create input for jetto and IDS data structures.
 
     Parameters
@@ -78,8 +101,13 @@ def create(*, force, dry_run, **kwargs):
     for i, combination in enumerate(combinations):
         run_name = f'{RUN_PREFIX}{i:04d}'
         run_drc = workspace.cwd / run_name
-        if not dry_run:
-            run_drc.mkdir(parents=True, exist_ok=force)
+
+        op_queue.add(action=run_drc.mkdir,
+                     kwargs={
+                         'parents': True,
+                         'exist_ok': force
+                     },
+                     description=f'Create folder {run_drc}')
 
         target_in = ImasHandle(db=options.data.db,
                                shot=source.shot,
@@ -90,16 +118,7 @@ def create(*, force, dry_run, **kwargs):
 
         source.copy_ids_entry_to(target_in)
 
-        core_profiles = target_in.get('core_profiles')
-        ids_mapping = IDSMapping(core_profiles)
-
-        if not dry_run:
-            for model in combination:
-                apply_model(model, ids_mapping)
-
-            logger.info('Writing data entry: %s', target_in)
-            with target_in.open() as data_entry_target:
-                core_profiles.put(db_entry=data_entry_target)
+        apply_combination(target_in, combination)
 
         system.copy_from_template(template_drc, run_drc)
         system.write_batchfile(workspace, run_name)
@@ -115,8 +134,4 @@ def create(*, force, dry_run, **kwargs):
             'operations': combination
         })
 
-    if not dry_run:
-        runs = Runs.parse_obj(runs)
-
-        with open(workspace.runs_yaml, 'w') as f:
-            runs.yaml(stream=f)
+    write_runs_file(runs, workspace)

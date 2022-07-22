@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from packaging import version
 
 from .._logging_utils import LoggingContext
+from ..operations import add_to_op_queue
 from ._imas import imas
 
 if TYPE_CHECKING:
@@ -50,6 +51,7 @@ def get_imas_ual_version():
     return imas_version, ual_version
 
 
+@add_to_op_queue('Create {target} from template')
 def copy_ids_entry(source: ImasHandle, target: ImasHandle):
     """Copies the ids entry to a new location.
 
@@ -78,29 +80,26 @@ def copy_ids_entry(source: ImasHandle, target: ImasHandle):
 
     idss_out = imas.ids(target.shot, target.run)
 
-    from ..config import cfg
-    if not cfg.dry_run:
-        idss_out.create_env(target.user, target.db, str(imas_version.major))
-        idx = idss_out.expIdx
+    idss_out.create_env(target.user, target.db, str(imas_version.major))
+    idx = idss_out.expIdx
 
-        parser = Parser.load_idsdef()
+    parser = Parser.load_idsdef()
 
-        # Temporarily hide warnings, because this loop is very spammy
-        with LoggingContext(level=logging.CRITICAL):
+    # Temporarily hide warnings, because this loop is very spammy
+    with LoggingContext(level=logging.CRITICAL):
 
-            for ids_info in parser.idss:
-                name = ids_info['name']
-                maxoccur = int(ids_info['maxoccur'])
+        for ids_info in parser.idss:
+            name = ids_info['name']
+            maxoccur = int(ids_info['maxoccur'])
 
-                if name in ('ec_launchers', 'numerics', 'sdn'):
-                    continue
+            if name in ('ec_launchers', 'numerics', 'sdn'):
+                continue
 
-                for i in range(maxoccur + 1):
-                    ids = idss_in.__dict__[name]
-                    ids.get(i)
-                    ids.setExpIdx(
-                        idx)  # this line sets the index to the output
-                    ids.put(i)
+            for i in range(maxoccur + 1):
+                ids = idss_in.__dict__[name]
+                ids.get(i)
+                ids.setExpIdx(idx)  # this line sets the index to the output
+                ids.put(i)
 
-        idss_in.close()
+    idss_in.close()
     idss_out.close()

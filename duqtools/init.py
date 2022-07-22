@@ -1,21 +1,19 @@
 import logging
 from pathlib import Path
 
-from duqtools.config import Config
-
+from .config import Config
+from .operations import confirm_operations, op_queue
 from .schema import BaseModel
 
 logger = logging.getLogger(__name__)
 
 
-def init(*, dry_run: bool, config: str, full: bool, force: bool,
-         comments: bool, **kwargs):
+@confirm_operations
+def init(*, config: str, full: bool, force: bool, comments: bool, **kwargs):
     """Initialize a brand new config file with all the default values.
 
     Parameters
     ----------
-    dry_run : bool
-        Do not make any changes to the file system.
     config : str
         Filename of the config.
     full : bool
@@ -65,6 +63,6 @@ def init(*, dry_run: bool, config: str, full: bool, force: bool,
                                 'plot': {'plots'}
                             })
 
-    if not dry_run:
-        with open(config_filepath, 'w') as f:
-            f.write(cfg_yaml)
+    op_queue.add(action=open(config_filepath, 'w').write,
+                 args=(cfg_yaml, ),
+                 description=f'Writing out {config_filepath} config file')
